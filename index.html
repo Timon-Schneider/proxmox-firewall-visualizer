@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxmox Firewall Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+        }
+        
+        .input-section {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        textarea::placeholder {
+            color: #6c757d;
+            font-size: 12px;
+        }
+        
+        .button-group {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button.secondary {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        }
+        
+        button.secondary:hover {
+            box-shadow: 0 5px 15px rgba(72, 187, 120, 0.4);
+        }
+        
+        button.danger {
+            background: linear-gradient(135deg, #f44336 0%, #c62828 100%);
+        }
+        
+        button.danger:hover {
+            box-shadow: 0 5px 15px rgba(244, 67, 54, 0.4);
+        }
+        
+        .canvas-container {
+            padding: 30px;
+            background: white;
+            overflow: auto;
+            position: relative;
+        }
+        
+        #networkCanvas {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            display: block;
+            margin: 0 auto;
+            background: #fafbfc;
+            cursor: grab;
+        }
+        
+        #networkCanvas.dragging {
+            cursor: grabbing;
+        }
+        
+        .controls-panel {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .controls-panel.show {
+            display: block;
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .control-group label {
+            font-weight: bold;
+            min-width: 180px;
+        }
+        
+        .control-group input[type="range"] {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .control-group .value-display {
+            min-width: 50px;
+            text-align: right;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .legend {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .legend-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        
+        .info-panel {
+            margin-top: 20px;
+            padding: 20px;
+            background: #e7f3ff;
+            border-left: 4px solid #667eea;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .info-panel.show {
+            display: block;
+        }
+        
+        .vm-details {
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        
+        .vm-details-item {
+            margin: 5px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 5px;
+        }
+        
+        .help-text {
+            margin-top: 10px;
+            padding: 15px;
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .help-text strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.5em;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+            
+            button {
+                width: 100%;
+            }
+            
+            .control-group {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .control-group label {
+                min-width: auto;
+            }
+            
+            .control-group input[type="range"] {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔥 Proxmox Firewall Visualizer</h1>
+            <p>Paste your Proxmox firewall configuration to visualize VM network topology</p>
+        </div>
+        
+        <div class="input-section">
+            <textarea id="firewallInput" placeholder="Paste your Proxmox firewall configuration here...
+
+To get the firewall rules, run this command on your Proxmox host:
+pve-firewall compile
+
+Then copy and paste the output here."></textarea>
+            <div class="button-group">
+                <button onclick="parseAndVisualize()">🎨 Generate Diagram</button>
+                <button onclick="toggleEditMode()" id="editModeBtn" style="display:none;" class="danger">🔒 Disable Drag Mode</button>
+                <button onclick="resetLayout()" id="resetBtn" style="display:none;">🔄 Reset Layout</button>
+                <button onclick="clearCanvas()">🗑️ Clear</button>
+                <button onclick="downloadImage()">💾 Download PNG</button>
+            </div>
+        </div>
+        
+        <div class="canvas-container">
+            <div id="controlsPanel" class="controls-panel">
+                <h3 style="margin-bottom: 15px;">📐 Layout Controls</h3>
+                <div class="control-group">
+                    <label>VM Circle Radius:</label>
+                    <input type="range" id="vmCircleRadius" min="150" max="500" value="250">
+                    <span class="value-display" id="vmCircleRadiusValue">250</span>
+                </div>
+                <div class="control-group">
+                    <label>External IP Radius:</label>
+                    <input type="range" id="externalCircleRadius" min="300" max="700" value="520">
+                    <span class="value-display" id="externalCircleRadiusValue">520</span>
+                </div>
+                <div class="control-group">
+                    <label>Management Circle Radius:</label>
+                    <input type="range" id="managementCircleRadius" min="200" max="600" value="360">
+                    <span class="value-display" id="managementCircleRadiusValue">360</span>
+                </div>
+                <div class="control-group">
+                    <label>Connection Curve:</label>
+                    <input type="range" id="connectionCurve" min="0" max="150" value="60">
+                    <span class="value-display" id="connectionCurveValue">60</span>
+                </div>
+                <div class="control-group">
+                    <label>VM Size:</label>
+                    <input type="range" id="vmSize" min="40" max="100" value="60">
+                    <span class="value-display" id="vmSizeValue">60</span>
+                </div>
+                <div class="help-text">
+                    <strong>💡 Tips:</strong>
+                    Drag mode is enabled! Click and drag VMs, External IPs, the Proxmox Host, connection labels, and the Management Network label to reposition them. Right-click a connection label to reset it to follow the line.
+                </div>
+            </div>
+            
+            <canvas id="networkCanvas" width="1600" height="1200"></canvas>
+            
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #4CAF50;"></div>
+                    <span>Virtual Machine</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #2196F3;"></div>
+                    <span>External IP</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #FF9800;"></div>
+                    <span>Management Network</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #607D8B;"></div>
+                    <span>Proxmox Host</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #9C27B0; height: 3px;"></div>
+                    <span>VM-to-VM Connection</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #FF5722; height: 3px;"></div>
+                    <span>External Connection</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #00BCD4; height: 3px;"></div>
+                    <span>Host Connection</span>
+                </div>
+            </div>
+            
+            <div id="infoPanel" class="info-panel"></div>
+        </div>
+    </div>
+
+    <script>
+        let networkData = {
+            vms: [],
+            connections: [],
+            externalIPs: [],
+            managementNet: null,
+            proxmoxHost: null
+        };
+
+        let vmPositions = new Map();
+        let externalPositions = new Map();
+        let labelPositions = new Map();
+        let managementLabelPos = null;
+        let proxmoxHostPos = null;
+        let draggedItem = null;
+        let isDragging = false;
+        let dragOffset = { x: 0, y: 0 };
+        let editMode = true;
+        let layoutParams = {
+            vmCircleRadius: 250,
+            externalCircleRadius: 520,
+            managementCircleRadius: 360,
+            connectionCurve: 60,
+            vmSize: 60
+        };
+
+        function parseFirewallConfig(config) {
+            const vms = new Map();
+            const connections = [];
+            const externalIPs = new Set();
+            let managementNet = null;
+            let proxmoxHost = null;
+            
+            const lines = config.split('\n');
+            
+            // First pass: collect all VMs and their IPs
+            for (let line of lines) {
+                line = line.trim();
+                
+                // Parse VM IP addresses from ipfilter
+                const ipFilterMatch = line.match(/add PVEFW-(\d+)-ipfilter-net0-v4\s+(\d+\.\d+\.\d+\.\d+)/);
+                if (ipFilterMatch) {
+                    const vmId = ipFilterMatch[1];
+                    const ip = ipFilterMatch[2];
+                    if (!vms.has(vmId)) {
+                        vms.set(vmId, {
+                            id: vmId,
+                            ip: ip,
+                            inboundPorts: new Set(),
+                            connections: []
+                        });
+                    }
+                }
+                
+                // Parse management network
+                const mgmtMatch = line.match(/add PVEFW-0-management-v4\s+(\d+\.\d+\.\d+\.\d+\/\d+)/);
+                if (mgmtMatch) {
+                    managementNet = mgmtMatch[1];
+                }
+            }
+            
+            // Determine Proxmox host IP
+            if (managementNet) {
+                const baseIP = managementNet.split('/')[0];
+                const parts = baseIP.split('.');
+                proxmoxHost = parts[0] + '.' + parts[1] + '.' + parts[2] + '.1';
+            }
+            
+            // Second pass: parse firewall rules for connections
+            for (let line of lines) {
+                line = line.trim();
+                
+                // Parse HOST-IN rules - Pattern 1: with -s source and destination
+                let hostMatch = line.match(/-A PVEFW-HOST-IN\s+-s\s+(\d+\.\d+\.\d+\.\d+(?:\/\d+)?)\s+-d\s+(\d+\.\d+\.\d+\.\d+)\s+-p\s+(\w+)\s+--dport\s+([\d:]+)\s+-j\s+RETURN/);
+                if (hostMatch) {
+                    const sourceIP = hostMatch[1];
+                    const destIP = hostMatch[2];
+                    const protocol = hostMatch[3];
+                    const port = hostMatch[4];
+                    
+                    if (!proxmoxHost) {
+                        proxmoxHost = destIP;
+                    }
+                    
+                    if (!sourceIP.startsWith('192.168.2.') || sourceIP.includes('/')) {
+                        externalIPs.add(sourceIP);
+                        connections.push({
+                            from: sourceIP,
+                            fromIP: sourceIP,
+                            to: 'host',
+                            toIP: destIP,
+                            port: port,
+                            protocol: protocol,
+                            external: true,
+                            isHost: true
+                        });
+                    }
+                }
+                
+                // Pattern 2: HOST-IN with set match
+                hostMatch = line.match(/-A PVEFW-HOST-IN\s+-m set --match-set PVEFW-0-management-v4 src\s+-p\s+(\w+)\s+--dport\s+([\d:]+)\s+-j\s+RETURN/);
+                if (hostMatch) {
+                    const protocol = hostMatch[1];
+                    const port = hostMatch[2];
+                    
+                    if (managementNet) {
+                        connections.push({
+                            from: managementNet,
+                            fromIP: managementNet,
+                            to: 'host',
+                            toIP: proxmoxHost || '192.168.2.200',
+                            port: port,
+                            protocol: protocol,
+                            external: false,
+                            isHost: true,
+                            isManagement: true
+                        });
+                    }
+                }
+                
+                // Parse tap interface rules
+                const tapRuleMatch = line.match(/-A tap(\d+)i0-IN\s+-s\s+(\d+\.\d+\.\d+\.\d+(?:\/\d+)?)\s+-d\s+(\d+\.\d+\.\d+\.\d+)\s+-p\s+(\w+)\s+--dport\s+([\d:]+)\s+-j\s+ACCEPT/);
+                if (tapRuleMatch) {
+                    const vmId = tapRuleMatch[1];
+                    const sourceIP = tapRuleMatch[2];
+                    const destIP = tapRuleMatch[3];
+                    const protocol = tapRuleMatch[4];
+                    const port = tapRuleMatch[5];
+                    
+                    let sourceVMId = null;
+                    for (let [id, vm] of vms) {
+                        if (sourceIP === vm.ip || sourceIP.includes(vm.ip)) {
+                            sourceVMId = id;
+                            break;
+                        }
+                    }
+                    
+                    if (sourceVMId && vms.has(vmId)) {
+                        connections.push({
+                            from: sourceVMId,
+                            fromIP: vms.get(sourceVMId).ip,
+                            to: vmId,
+                            toIP: destIP,
+                            port: port,
+                            protocol: protocol,
+                            external: false,
+                            isHost: false
+                        });
+                        vms.get(vmId).inboundPorts.add(`${protocol}:${port}`);
+                    } else if (!sourceIP.startsWith('192.168.2.') || sourceIP.includes('/')) {
+                        externalIPs.add(sourceIP);
+                        connections.push({
+                            from: sourceIP,
+                            fromIP: sourceIP,
+                            to: vmId,
+                            toIP: destIP,
+                            port: port,
+                            protocol: protocol,
+                            external: true,
+                            isHost: false
+                        });
+                        if (vms.has(vmId)) {
+                            vms.get(vmId).inboundPorts.add(`${protocol}:${port}`);
+                        }
+                    }
+                }
+                
+                // Parse ACCEPT rules without specific port
+                const acceptAllMatch = line.match(/-A tap(\d+)i0-IN\s+-s\s+(\d+\.\d+\.\d+\.\d+(?:\/\d+)?)\s+-d\s+(\d+\.\d+\.\d+\.\d+)\s+-j\s+ACCEPT/);
+                if (acceptAllMatch && !line.includes('--dport')) {
+                    const vmId = acceptAllMatch[1];
+                    const sourceIP = acceptAllMatch[2];
+                    const destIP = acceptAllMatch[3];
+                    
+                    if (!sourceIP.startsWith('192.168.2.') || sourceIP.includes('/')) {
+                        externalIPs.add(sourceIP);
+                        connections.push({
+                            from: sourceIP,
+                            fromIP: sourceIP,
+                            to: vmId,
+                            toIP: destIP,
+                            port: 'any',
+                            protocol: 'any',
+                            external: true,
+                            isHost: false
+                        });
+                    }
+                }
+            }
+            
+            return {
+                vms: Array.from(vms.values()),
+                connections: connections,
+                externalIPs: Array.from(externalIPs),
+                managementNet: managementNet,
+                proxmoxHost: proxmoxHost
+            };
+        }
+
+        function recalculatePositions() {
+            const canvas = document.getElementById('networkCanvas');
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            // Recalculate VM positions based on current radius
+            const vmCount = vmPositions.size;
+            let vmIndex = 0;
+            vmPositions.forEach((pos, vmId) => {
+                const angle = (vmIndex / vmCount) * 2 * Math.PI - Math.PI / 2;
+                pos.x = centerX + Math.cos(angle) * layoutParams.vmCircleRadius;
+                pos.y = centerY + Math.sin(angle) * layoutParams.vmCircleRadius;
+                vmIndex++;
+            });
+            
+            // Recalculate external IP positions based on current radius
+            const extCount = externalPositions.size;
+            let extIndex = 0;
+            externalPositions.forEach((pos, ip) => {
+                const angle = (extIndex / Math.max(extCount, 1)) * 2 * Math.PI - Math.PI / 2;
+                pos.x = centerX + Math.cos(angle) * layoutParams.externalCircleRadius;
+                pos.y = centerY + Math.sin(angle) * layoutParams.externalCircleRadius;
+                extIndex++;
+            });
+        }
+
+        function calculateLayout() {
+            const canvas = document.getElementById('networkCanvas');
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            if (vmPositions.size === 0) {
+                networkData.vms.forEach((vm, index) => {
+                    const angle = (index / networkData.vms.length) * 2 * Math.PI - Math.PI / 2;
+                    const x = centerX + Math.cos(angle) * layoutParams.vmCircleRadius;
+                    const y = centerY + Math.sin(angle) * layoutParams.vmCircleRadius;
+                    vmPositions.set(vm.id, { x, y, vm });
+                });
+            } else {
+                vmPositions.forEach((pos, vmId) => {
+                    const vm = networkData.vms.find(v => v.id === vmId);
+                    if (vm) {
+                        pos.vm = vm;
+                    }
+                });
+            }
+            
+            if (externalPositions.size === 0) {
+                const externalCount = networkData.externalIPs.length;
+                networkData.externalIPs.forEach((ip, index) => {
+                    const angle = (index / Math.max(externalCount, 1)) * 2 * Math.PI - Math.PI / 2;
+                    const x = centerX + Math.cos(angle) * layoutParams.externalCircleRadius;
+                    const y = centerY + Math.sin(angle) * layoutParams.externalCircleRadius;
+                    externalPositions.set(ip, { x, y });
+                });
+            }
+            
+            if (networkData.proxmoxHost && !proxmoxHostPos) {
+                proxmoxHostPos = { x: centerX, y: centerY };
+            }
+            
+            if (networkData.managementNet && !managementLabelPos) {
+                managementLabelPos = { x: centerX, y: 80 };
+            }
+        }
+
+        function calculateCurveControlPoint(fromX, fromY, toX, toY, curveOffset, labelPos = null) {
+            const midX = (fromX + toX) / 2;
+            const midY = (fromY + toY) / 2;
+            
+            const dx = toX - fromX;
+            const dy = toY - fromY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const perpX = -dy / dist;
+            const perpY = dx / dist;
+            
+            if (labelPos && labelPos.customControl) {
+                return { x: labelPos.controlX, y: labelPos.controlY };
+            }
+            
+            const controlX = midX + perpX * curveOffset;
+            const controlY = midY + perpY * curveOffset;
+            
+            return { x: controlX, y: controlY };
+        }
+
+        function drawArrowhead(ctx, x, y, angle, color) {
+            const arrowSize = 12;
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-arrowSize, -arrowSize / 2);
+            ctx.lineTo(-arrowSize, arrowSize / 2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawCurvedConnection(ctx, fromX, fromY, toX, toY, curve, color, label, labelKey) {
+            const labelPos = labelPositions.get(labelKey);
+            
+            const control = calculateCurveControlPoint(fromX, fromY, toX, toY, curve, labelPos);
+            const controlX = control.x;
+            const controlY = control.y;
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.quadraticCurveTo(controlX, controlY, toX, toY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Calculate arrow position (80% along the curve)
+            const t = 0.8;
+            const arrowX = (1-t)*(1-t)*fromX + 2*(1-t)*t*controlX + t*t*toX;
+            const arrowY = (1-t)*(1-t)*fromY + 2*(1-t)*t*controlY + t*t*toY;
+            
+            // Calculate tangent angle at arrow position
+            const dx = 2*(1-t)*(controlX - fromX) + 2*t*(toX - controlX);
+            const dy = 2*(1-t)*(controlY - fromY) + 2*t*(toY - controlY);
+            const angle = Math.atan2(dy, dx);
+            
+            // Draw the arrowhead
+            drawArrowhead(ctx, arrowX, arrowY, angle, color);
+            
+            // Calculate label position (50% along the curve)
+            const labelT = 0.5;
+            const defaultLabelX = (1-labelT)*(1-labelT)*fromX + 2*(1-labelT)*labelT*controlX + labelT*labelT*toX;
+            const defaultLabelY = (1-labelT)*(1-labelT)*fromY + 2*(1-labelT)*labelT*controlY + labelT*labelT*toY;
+            
+            if (!labelPos) {
+                labelPositions.set(labelKey, { 
+                    x: defaultLabelX, 
+                    y: defaultLabelY,
+                    label: label,
+                    color: color,
+                    controlX: controlX,
+                    controlY: controlY,
+                    fromX: fromX,
+                    fromY: fromY,
+                    toX: toX,
+                    toY: toY,
+                    customControl: false,
+                    curveOffset: curve
+                });
+            } else {
+                labelPos.fromX = fromX;
+                labelPos.fromY = fromY;
+                labelPos.toX = toX;
+                labelPos.toY = toY;
+                labelPos.label = label;
+                labelPos.color = color;
+                
+                if (!labelPos.customControl) {
+                    labelPos.controlX = controlX;
+                    labelPos.controlY = controlY;
+                    labelPos.x = defaultLabelX;
+                    labelPos.y = defaultLabelY;
+                } else {
+                    labelPos.x = (1-labelT)*(1-labelT)*fromX + 2*(1-labelT)*labelT*labelPos.controlX + labelT*labelT*toX;
+                    labelPos.y = (1-labelT)*(1-labelT)*fromY + 2*(1-labelT)*labelT*labelPos.controlY + labelT*labelT*toY;
+                }
+            }
+            
+            const finalLabelPos = labelPositions.get(labelKey);
+            
+            ctx.font = 'bold 11px Arial';
+            const textWidth = ctx.measureText(label).width;
+            const padding = 4;
+            
+            const isHovered = draggedItem && draggedItem.type === 'label' && draggedItem.id === labelKey;
+            
+            ctx.fillStyle = isHovered && finalLabelPos.customControl ? 'rgba(255, 235, 59, 0.9)' : '#fff';
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect(finalLabelPos.x - textWidth/2 - padding, finalLabelPos.y - 10, textWidth + padding * 2, 20, 4);
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.fillStyle = color;
+            ctx.textAlign = 'center';
+            ctx.fillText(label, finalLabelPos.x, finalLabelPos.y + 4);
+        }
+
+        function drawNetwork() {
+            const canvas = document.getElementById('networkCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (networkData.vms.length === 0 && !networkData.proxmoxHost) {
+                ctx.font = '20px Arial';
+                ctx.fillStyle = '#999';
+                ctx.textAlign = 'center';
+                ctx.fillText('No data to display. Please paste firewall configuration.', canvas.width / 2, canvas.height / 2);
+                return;
+            }
+            
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            if (networkData.managementNet) {
+                const isHovered = draggedItem && draggedItem.type === 'managementCircle';
+                
+                ctx.fillStyle = 'rgba(255, 152, 0, 0.1)';
+                ctx.strokeStyle = isHovered ? '#E65100' : '#FF9800';
+                ctx.lineWidth = isHovered ? 3 : 2;
+                ctx.setLineDash([10, 5]);
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, layoutParams.managementCircleRadius, 0, 2 * Math.PI);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                const isLabelHovered = draggedItem && draggedItem.type === 'managementLabel';
+                
+                if (!managementLabelPos) {
+                    managementLabelPos = { x: centerX, y: 80 };
+                }
+                
+                ctx.fillStyle = isLabelHovered ? '#E65100' : '#FF9800';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                
+                const mgmtText = 'Management: ' + networkData.managementNet;
+                const mgmtTextWidth = ctx.measureText(mgmtText).width;
+                
+                ctx.fillStyle = isLabelHovered ? 'rgba(255, 152, 0, 0.2)' : 'rgba(255, 255, 255, 0.9)';
+                ctx.strokeStyle = isLabelHovered ? '#E65100' : '#FF9800';
+                ctx.lineWidth = isLabelHovered ? 2 : 1;
+                ctx.beginPath();
+                ctx.roundRect(managementLabelPos.x - mgmtTextWidth/2 - 8, managementLabelPos.y - 12, mgmtTextWidth + 16, 24, 5);
+                ctx.fill();
+                ctx.stroke();
+                
+                ctx.fillStyle = isLabelHovered ? '#E65100' : '#FF9800';
+                ctx.fillText(mgmtText, managementLabelPos.x, managementLabelPos.y + 4);
+            }
+            
+            const connectionGroups = new Map();
+            networkData.connections.forEach(conn => {
+                const key = [conn.from, conn.to].sort().join('-');
+                if (!connectionGroups.has(key)) {
+                    connectionGroups.set(key, []);
+                }
+                connectionGroups.get(key).push(conn);
+            });
+            
+            networkData.connections.forEach((conn, connIndex) => {
+                let fromPos, toPos;
+                let color;
+                
+                if (conn.isHost) {
+                    if (conn.isManagement) {
+                        return;
+                    }
+                    fromPos = externalPositions.get(conn.from);
+                    toPos = proxmoxHostPos;
+                    color = '#00BCD4';
+                } else if (conn.external) {
+                    fromPos = externalPositions.get(conn.from);
+                    toPos = vmPositions.get(conn.to);
+                    color = '#FF5722';
+                } else {
+                    fromPos = vmPositions.get(conn.from);
+                    toPos = vmPositions.get(conn.to);
+                    color = '#9C27B0';
+                }
+                
+                if (fromPos && toPos) {
+                    const key = [conn.from, conn.to].sort().join('-');
+                    const group = connectionGroups.get(key);
+                    const index = group.indexOf(conn);
+                    const totalInGroup = group.length;
+                    
+                    let curveOffset = 0;
+                    if (totalInGroup > 1) {
+                        const step = layoutParams.connectionCurve;
+                        curveOffset = (index - (totalInGroup - 1) / 2) * step;
+                    } else {
+                        curveOffset = layoutParams.connectionCurve / 2;
+                    }
+                    
+                    const label = `${conn.protocol}:${conn.port}`;
+                    const labelKey = `conn-${connIndex}`;
+                    drawCurvedConnection(ctx, fromPos.x, fromPos.y, toPos.x, toPos.y, curveOffset, color, label, labelKey);
+                }
+            });
+            
+            if (networkData.proxmoxHost && proxmoxHostPos) {
+                const isHovered = draggedItem && draggedItem.type === 'host';
+                
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+                ctx.shadowBlur = 20;
+                ctx.shadowOffsetX = 5;
+                ctx.shadowOffsetY = 5;
+                
+                ctx.fillStyle = isHovered ? '#78909C' : '#607D8B';
+                ctx.beginPath();
+                const sides = 6;
+                const radius = 70;
+                for (let i = 0; i < sides; i++) {
+                    const angle = (i / sides) * 2 * Math.PI - Math.PI / 2;
+                    const x = proxmoxHostPos.x + Math.cos(angle) * radius;
+                    const y = proxmoxHostPos.y + Math.sin(angle) * radius;
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.closePath();
+                ctx.fill();
+                
+                ctx.shadowColor = 'transparent';
+                
+                ctx.strokeStyle = isHovered ? '#263238' : '#37474F';
+                ctx.lineWidth = isHovered ? 4 : 3;
+                ctx.stroke();
+                
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Proxmox', proxmoxHostPos.x, proxmoxHostPos.y - 8);
+                ctx.font = '12px Arial';
+                ctx.fillText('Host', proxmoxHostPos.x, proxmoxHostPos.y + 8);
+                ctx.font = '11px Arial';
+                ctx.fillText(networkData.proxmoxHost, proxmoxHostPos.x, proxmoxHostPos.y + 24);
+            }
+            
+            vmPositions.forEach((pos, vmId) => {
+                const vm = pos.vm;
+                const isHovered = draggedItem && draggedItem.type === 'vm' && draggedItem.id === vmId;
+                
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+                ctx.shadowBlur = 15;
+                ctx.shadowOffsetX = 4;
+                ctx.shadowOffsetY = 4;
+                
+                ctx.fillStyle = isHovered ? '#66BB6A' : '#4CAF50';
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, layoutParams.vmSize, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                ctx.shadowColor = 'transparent';
+                
+                ctx.strokeStyle = isHovered ? '#1B5E20' : '#2E7D32';
+                ctx.lineWidth = isHovered ? 4 : 3;
+                ctx.stroke();
+                
+                ctx.fillStyle = '#fff';
+                ctx.font = `bold ${Math.floor(layoutParams.vmSize / 3)}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.fillText('VM ' + vm.id, pos.x, pos.y - layoutParams.vmSize/8);
+                
+                ctx.font = `${Math.floor(layoutParams.vmSize / 4.6)}px Arial`;
+                ctx.fillText(vm.ip, pos.x, pos.y + layoutParams.vmSize/6);
+                
+                if (vm.inboundPorts.size > 0) {
+                    ctx.font = `${Math.floor(layoutParams.vmSize / 5.5)}px Arial`;
+                    ctx.fillText(vm.inboundPorts.size + ' port(s)', pos.x, pos.y + layoutParams.vmSize/2.4);
+                }
+            });
+            
+            externalPositions.forEach((pos, ip) => {
+                const isHovered = draggedItem && draggedItem.type === 'external' && draggedItem.id === ip;
+                
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+                ctx.shadowBlur = 15;
+                ctx.shadowOffsetX = 4;
+                ctx.shadowOffsetY = 4;
+                
+                ctx.fillStyle = isHovered ? '#42A5F5' : '#2196F3';
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 45, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                ctx.shadowColor = 'transparent';
+                
+                ctx.strokeStyle = isHovered ? '#0D47A1' : '#1565C0';
+                ctx.lineWidth = isHovered ? 4 : 3;
+                ctx.stroke();
+                
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                
+                if (ip.length > 16) {
+                    const parts = ip.split('/');
+                    ctx.fillText(parts[0].substring(0, 14) + '...', pos.x, pos.y - 5);
+                    if (parts[1]) {
+                        ctx.fillText('/' + parts[1], pos.x, pos.y + 10);
+                    }
+                } else {
+                    ctx.fillText(ip, pos.x, pos.y + 3);
+                }
+            });
+        }
+
+        function getItemAtPosition(x, y) {
+            for (let [labelKey, pos] of labelPositions) {
+                const ctx = document.getElementById('networkCanvas').getContext('2d');
+                ctx.font = 'bold 11px Arial';
+                const textWidth = ctx.measureText(pos.label).width;
+                const padding = 4;
+                const labelWidth = textWidth + padding * 2;
+                const labelHeight = 20;
+                
+                if (x >= pos.x - labelWidth/2 && x <= pos.x + labelWidth/2 &&
+                    y >= pos.y - 10 && y <= pos.y + 10) {
+                    return { type: 'label', id: labelKey, pos };
+                }
+            }
+            
+            if (managementLabelPos && networkData.managementNet) {
+                const ctx = document.getElementById('networkCanvas').getContext('2d');
+                ctx.font = 'bold 14px Arial';
+                const mgmtText = 'Management: ' + networkData.managementNet;
+                const mgmtTextWidth = ctx.measureText(mgmtText).width;
+                
+                if (x >= managementLabelPos.x - mgmtTextWidth/2 - 8 && 
+                    x <= managementLabelPos.x + mgmtTextWidth/2 + 8 &&
+                    y >= managementLabelPos.y - 12 && 
+                    y <= managementLabelPos.y + 12) {
+                    return { type: 'managementLabel', pos: managementLabelPos };
+                }
+            }
+            
+            if (proxmoxHostPos) {
+                const dist = Math.sqrt(Math.pow(x - proxmoxHostPos.x, 2) + Math.pow(y - proxmoxHostPos.y, 2));
+                if (dist <= 70) {
+                    return { type: 'host', pos: proxmoxHostPos };
+                }
+            }
+            
+            for (let [vmId, pos] of vmPositions) {
+                const dist = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
+                if (dist <= layoutParams.vmSize) {
+                    return { type: 'vm', id: vmId, pos };
+                }
+            }
+            
+            for (let [ip, pos] of externalPositions) {
+                const dist = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
+                if (dist <= 45) {
+                    return { type: 'external', id: ip, pos };
+                }
+            }
+            
+            if (networkData.managementNet) {
+                const canvas = document.getElementById('networkCanvas');
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                const distFromCenter = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+                const circleDist = Math.abs(distFromCenter - layoutParams.managementCircleRadius);
+                
+                if (circleDist <= 10) {
+                    return { type: 'managementCircle' };
+                }
+            }
+            
+            return null;
+        }
+
+        function setupCanvasInteraction() {
+            const canvas = document.getElementById('networkCanvas');
+            
+            canvas.addEventListener('mousedown', (e) => {
+                if (!editMode) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                const item = getItemAtPosition(x, y);
+                if (item) {
+                    draggedItem = item;
+                    isDragging = true;
+                    
+                    if (item.type === 'managementCircle') {
+                        const centerX = canvas.width / 2;
+                        const centerY = canvas.height / 2;
+                        const angle = Math.atan2(y - centerY, x - centerX);
+                        dragOffset.angle = angle;
+                        dragOffset.initialRadius = layoutParams.managementCircleRadius;
+                    } else {
+                        dragOffset.x = x - item.pos.x;
+                        dragOffset.y = y - item.pos.y;
+                    }
+                    
+                    canvas.classList.add('dragging');
+                }
+            });
+            
+            canvas.addEventListener('mousemove', (e) => {
+                if (!editMode) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                if (isDragging && draggedItem) {
+                    if (draggedItem.type === 'managementCircle') {
+                        const centerX = canvas.width / 2;
+                        const centerY = canvas.height / 2;
+                        const distFromCenter = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+                        layoutParams.managementCircleRadius = Math.max(200, Math.min(600, distFromCenter));
+                        document.getElementById('managementCircleRadius').value = layoutParams.managementCircleRadius;
+                        document.getElementById('managementCircleRadiusValue').textContent = Math.round(layoutParams.managementCircleRadius);
+                    } else {
+                        const newX = x - dragOffset.x;
+                        const newY = y - dragOffset.y;
+                        
+                        if (draggedItem.type === 'vm') {
+                            const pos = vmPositions.get(draggedItem.id);
+                            pos.x = newX;
+                            pos.y = newY;
+                        } else if (draggedItem.type === 'external') {
+                            const pos = externalPositions.get(draggedItem.id);
+                            pos.x = newX;
+                            pos.y = newY;
+                        } else if (draggedItem.type === 'host') {
+                            proxmoxHostPos.x = newX;
+                            proxmoxHostPos.y = newY;
+                        } else if (draggedItem.type === 'label') {
+                            const pos = labelPositions.get(draggedItem.id);
+                            pos.x = newX;
+                            pos.y = newY;
+                            
+                            pos.customControl = true;
+                            
+                            const t = 0.5;
+                            pos.controlX = (newX - (1-t)*(1-t)*pos.fromX - t*t*pos.toX) / (2*(1-t)*t);
+                            pos.controlY = (newY - (1-t)*(1-t)*pos.fromY - t*t*pos.toY) / (2*(1-t)*t);
+                        } else if (draggedItem.type === 'managementLabel') {
+                            managementLabelPos.x = newX;
+                            managementLabelPos.y = newY;
+                        }
+                    }
+                    
+                    drawNetwork();
+                } else {
+                    const item = getItemAtPosition(x, y);
+                    if (item) {
+                        if (item.type === 'managementCircle') {
+                            canvas.style.cursor = 'ew-resize';
+                        } else {
+                            canvas.style.cursor = 'grab';
+                        }
+                        drawNetwork();
+                    } else {
+                        canvas.style.cursor = 'default';
+                    }
+                }
+            });
+            
+            canvas.addEventListener('mouseup', () => {
+                if (!editMode) return;
+                
+                isDragging = false;
+                draggedItem = null;
+                canvas.classList.remove('dragging');
+                drawNetwork();
+            });
+            
+            canvas.addEventListener('mouseleave', () => {
+                if (!editMode) return;
+                
+                isDragging = false;
+                draggedItem = null;
+                canvas.classList.remove('dragging');
+                drawNetwork();
+            });
+            
+            canvas.addEventListener('contextmenu', (e) => {
+                if (!editMode) return;
+                
+                e.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                const item = getItemAtPosition(x, y);
+                if (item && item.type === 'label') {
+                    const pos = labelPositions.get(item.id);
+                    if (pos.customControl) {
+                        pos.customControl = false;
+                        drawNetwork();
+                    }
+                }
+            });
+        }
+
+        function toggleEditMode() {
+            editMode = !editMode;
+            const btn = document.getElementById('editModeBtn');
+            const canvas = document.getElementById('networkCanvas');
+            
+            if (editMode) {
+                btn.textContent = '🔒 Disable Drag Mode';
+                btn.className = 'danger';
+                canvas.style.cursor = 'default';
+            } else {
+                btn.textContent = '✏️ Enable Drag Mode';
+                btn.className = 'secondary';
+                canvas.style.cursor = 'default';
+            }
+            
+            drawNetwork();
+        }
+
+        function updateLayout() {
+            layoutParams.vmCircleRadius = parseInt(document.getElementById('vmCircleRadius').value);
+            layoutParams.externalCircleRadius = parseInt(document.getElementById('externalCircleRadius').value);
+            layoutParams.managementCircleRadius = parseInt(document.getElementById('managementCircleRadius').value);
+            layoutParams.connectionCurve = parseInt(document.getElementById('connectionCurve').value);
+            layoutParams.vmSize = parseInt(document.getElementById('vmSize').value);
+            
+            document.getElementById('vmCircleRadiusValue').textContent = layoutParams.vmCircleRadius;
+            document.getElementById('externalCircleRadiusValue').textContent = layoutParams.externalCircleRadius;
+            document.getElementById('managementCircleRadiusValue').textContent = layoutParams.managementCircleRadius;
+            document.getElementById('connectionCurveValue').textContent = layoutParams.connectionCurve;
+            document.getElementById('vmSizeValue').textContent = layoutParams.vmSize;
+            
+            recalculatePositions();
+            
+            drawNetwork();
+        }
+
+        function resetLayout() {
+            document.getElementById('vmCircleRadius').value = 250;
+            document.getElementById('externalCircleRadius').value = 520;
+            document.getElementById('managementCircleRadius').value = 360;
+            document.getElementById('connectionCurve').value = 60;
+            document.getElementById('vmSize').value = 60;
+            
+            vmPositions.clear();
+            externalPositions.clear();
+            labelPositions.clear();
+            managementLabelPos = null;
+            proxmoxHostPos = null;
+            
+            updateLayout();
+            calculateLayout();
+            drawNetwork();
+        }
+
+        function parseAndVisualize() {
+            const input = document.getElementById('firewallInput').value;
+            if (!input.trim()) {
+                alert('Please paste firewall configuration first!');
+                return;
+            }
+            
+            networkData = parseFirewallConfig(input);
+            vmPositions.clear();
+            externalPositions.clear();
+            labelPositions.clear();
+            managementLabelPos = null;
+            proxmoxHostPos = null;
+            calculateLayout();
+            drawNetwork();
+            
+            document.getElementById('controlsPanel').classList.add('show');
+            document.getElementById('editModeBtn').style.display = 'inline-block';
+            document.getElementById('resetBtn').style.display = 'inline-block';
+            
+            const infoPanel = document.getElementById('infoPanel');
+            infoPanel.classList.add('show');
+            
+            let vmDetailsHTML = '<div class="vm-details">';
+            networkData.vms.forEach(vm => {
+                const incomingConns = networkData.connections.filter(c => c.to === vm.id);
+                vmDetailsHTML += `
+                    <div class="vm-details-item">
+                        <strong>VM ${vm.id} (${vm.ip})</strong><br>
+                        Incoming connections: ${incomingConns.length}<br>
+                        Open ports: ${Array.from(vm.inboundPorts).join(', ')}
+                    </div>
+                `;
+            });
+            vmDetailsHTML += '</div>';
+            
+            const hostConns = networkData.connections.filter(c => c.isHost);
+            
+            infoPanel.innerHTML = `
+                <h3>📊 Network Analysis</h3>
+                <p><strong>Proxmox Host:</strong> ${networkData.proxmoxHost || 'Not detected'}</p>
+                <p><strong>Host Connections:</strong> ${hostConns.length}</p>
+                <p><strong>Total VMs:</strong> ${networkData.vms.length}</p>
+                <p><strong>Total Connections:</strong> ${networkData.connections.length}</p>
+                <p><strong>External IPs:</strong> ${networkData.externalIPs.length}</p>
+                <p><strong>Management Network:</strong> ${networkData.managementNet || 'Not defined'}</p>
+                ${vmDetailsHTML}
+            `;
+        }
+
+        function clearCanvas() {
+            document.getElementById('firewallInput').value = '';
+            const canvas = document.getElementById('networkCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('infoPanel').classList.remove('show');
+            document.getElementById('controlsPanel').classList.remove('show');
+            document.getElementById('editModeBtn').style.display = 'none';
+            document.getElementById('resetBtn').style.display = 'none';
+            
+            vmPositions.clear();
+            externalPositions.clear();
+            labelPositions.clear();
+            managementLabelPos = null;
+            proxmoxHostPos = null;
+            
+            if (!editMode) {
+                toggleEditMode();
+            }
+        }
+
+        function downloadImage() {
+            const canvas = document.getElementById('networkCanvas');
+            const link = document.createElement('a');
+            link.download = 'proxmox-network-diagram.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        // Setup slider event listeners
+        document.getElementById('vmCircleRadius').addEventListener('input', updateLayout);
+        document.getElementById('externalCircleRadius').addEventListener('input', updateLayout);
+        document.getElementById('managementCircleRadius').addEventListener('input', updateLayout);
+        document.getElementById('connectionCurve').addEventListener('input', updateLayout);
+        document.getElementById('vmSize').addEventListener('input', updateLayout);
+
+        // Initialize
+        setupCanvasInteraction();
+    </script>
+</body>
+</html>
