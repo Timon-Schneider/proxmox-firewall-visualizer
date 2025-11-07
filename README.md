@@ -8,6 +8,7 @@ A single-file HTML tool that turns your Proxmox firewall configuration into an i
 - 🖱️ **Interactive Drag & Drop** - Rearrange nodes and connection labels freely
 - ⚙️ **Customizable Layout** - Adjust circle radii, connection curves, and node sizes
 - 💾 **Export to PNG** - Save your diagram as an image
+- 📄 **Export to SVG** - Save your diagram as a scalable vector graphic
 - 🚀 **Zero Dependencies** - Just HTML, CSS, and vanilla JavaScript
 
 ## Usage
@@ -17,6 +18,7 @@ A single-file HTML tool that turns your Proxmox firewall configuration into an i
 3. Paste your Proxmox firewall configuration (from `pve-firewall compile`)
 4. Click "Generate Diagram"
 5. Drag nodes and labels to customize the layout
+6. Export your diagram as PNG or SVG using the download buttons
 
 ## What It Shows
 
