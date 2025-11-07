@@ -77,4 +77,4 @@ add PVEFW-0-management-v4 192.168.2.0/24
 -A PVEFW-HOST-IN -s 203.0.113.50 -d 192.168.2.1 -p udp --dport 1194 -j RETURN
 ```
 
-![Example Diagram](proxmox-network-diagram.png)
+![Example Diagram](Bildschirmfoto_7-11-2025_165317_.jpeg)

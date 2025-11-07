@@ -349,6 +349,14 @@ Then copy and paste the output here."></textarea>
                     <div class="legend-box" style="background: #00BCD4; height: 3px;"></div>
                     <span>Host Connection</span>
                 </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #FF1744; height: 4px;"></div>
+                    <span>⚠️ Public Access (Everyone)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #F44336; border: 2px solid #F44336; border-radius: 50%;"></div>
+                    <span>VM with Public Ports</span>
+                </div>
             </div>
             
             <div id="infoPanel" class="info-panel"></div>
@@ -435,21 +443,28 @@ Then copy and paste the output here."></textarea>
                     const protocol = hostMatch[3];
                     const port = hostMatch[4];
                     
+                    const isPublic = sourceIP === '0.0.0.0/0' || sourceIP === '0.0.0.0';
+                    
                     if (!proxmoxHost) {
                         proxmoxHost = destIP;
                     }
                     
-                    if (!sourceIP.startsWith('192.168.2.') || sourceIP.includes('/')) {
-                        externalIPs.add(sourceIP);
+                    if (isPublic || !sourceIP.startsWith('192.168.2.') || sourceIP.includes('/')) {
+                        if (isPublic) {
+                            externalIPs.add('0.0.0.0/0 (Everyone)');
+                        } else {
+                            externalIPs.add(sourceIP);
+                        }
                         connections.push({
-                            from: sourceIP,
+                            from: isPublic ? '0.0.0.0/0 (Everyone)' : sourceIP,
                             fromIP: sourceIP,
                             to: 'host',
                             toIP: destIP,
                             port: port,
                             protocol: protocol,
                             external: true,
-                            isHost: true
+                            isHost: true,
+                            isPublic: isPublic
                         });
                     }
                 }
@@ -475,14 +490,17 @@ Then copy and paste the output here."></textarea>
                     }
                 }
                 
-                // Parse tap interface rules
-                const tapRuleMatch = line.match(/-A tap(\d+)i0-IN\s+-s\s+(\d+\.\d+\.\d+\.\d+(?:\/\d+)?)\s+-d\s+(\d+\.\d+\.\d+\.\d+)\s+-p\s+(\w+)\s+--dport\s+([\d:]+)\s+-j\s+ACCEPT/);
+                // Parse tap interface rules with source
+                let tapRuleMatch = line.match(/-A tap(\d+)i0-IN\s+-s\s+(\d+\.\d+\.\d+\.\d+(?:\/\d+)?)\s+-d\s+(\d+\.\d+\.\d+\.\d+)\s+-p\s+(\w+)\s+--dport\s+([\d:]+)\s+-j\s+ACCEPT/);
                 if (tapRuleMatch) {
                     const vmId = tapRuleMatch[1];
                     const sourceIP = tapRuleMatch[2];
                     const destIP = tapRuleMatch[3];
                     const protocol = tapRuleMatch[4];
                     const port = tapRuleMatch[5];
+                    
+                    // Check if this is a public connection (0.0.0.0/0 or any)
+                    const isPublic = sourceIP === '0.0.0.0/0' || sourceIP === '0.0.0.0';
                     
                     let sourceVMId = null;
                     for (let [id, vm] of vms) {
@@ -501,46 +519,136 @@ Then copy and paste the output here."></textarea>
                             port: port,
                             protocol: protocol,
                             external: false,
-                            isHost: false
+                            isHost: false,
+                            isPublic: false
                         });
                         vms.get(vmId).inboundPorts.add(`${protocol}:${port}`);
-                    } else if (!sourceIP.startsWith('192.168.2.') || sourceIP.includes('/')) {
-                        externalIPs.add(sourceIP);
+                    } else if (isPublic || !sourceIP.startsWith('192.168.2.') || sourceIP.includes('/')) {
+                        if (isPublic) {
+                            externalIPs.add('0.0.0.0/0 (Everyone)');
+                        } else {
+                            externalIPs.add(sourceIP);
+                        }
                         connections.push({
-                            from: sourceIP,
+                            from: isPublic ? '0.0.0.0/0 (Everyone)' : sourceIP,
                             fromIP: sourceIP,
                             to: vmId,
                             toIP: destIP,
                             port: port,
                             protocol: protocol,
                             external: true,
-                            isHost: false
+                            isHost: false,
+                            isPublic: isPublic
                         });
                         if (vms.has(vmId)) {
                             vms.get(vmId).inboundPorts.add(`${protocol}:${port}`);
+                            if (isPublic) {
+                                if (!vms.get(vmId).publicPorts) {
+                                    vms.get(vmId).publicPorts = new Set();
+                                }
+                                vms.get(vmId).publicPorts.add(`${protocol}:${port}`);
+                            }
                         }
                     }
                 }
                 
-                // Parse ACCEPT rules without specific port
-                const acceptAllMatch = line.match(/-A tap(\d+)i0-IN\s+-s\s+(\d+\.\d+\.\d+\.\d+(?:\/\d+)?)\s+-d\s+(\d+\.\d+\.\d+\.\d+)\s+-j\s+ACCEPT/);
+                // Parse tap interface rules WITHOUT source (accepts from anywhere = 0.0.0.0/0)
+                // Only check if the first pattern didn't match (no -s parameter)
+                else {
+                    tapRuleMatch = line.match(/-A tap(\d+)i0-IN\s+-d\s+(\d+\.\d+\.\d+\.\d+)\s+-p\s+(\w+)\s+--dport\s+([\d:]+)\s+-j\s+ACCEPT/);
+                    if (tapRuleMatch) {
+                        const vmId = tapRuleMatch[1];
+                        const destIP = tapRuleMatch[2];
+                        const protocol = tapRuleMatch[3];
+                        const port = tapRuleMatch[4];
+                        const sourceIP = '0.0.0.0/0'; // No source means accept from anywhere
+                        const isPublic = true;
+                        
+                        externalIPs.add('0.0.0.0/0 (Everyone)');
+                        connections.push({
+                            from: '0.0.0.0/0 (Everyone)',
+                            fromIP: sourceIP,
+                            to: vmId,
+                            toIP: destIP,
+                            port: port,
+                            protocol: protocol,
+                            external: true,
+                            isHost: false,
+                            isPublic: isPublic
+                        });
+                        if (vms.has(vmId)) {
+                            vms.get(vmId).inboundPorts.add(`${protocol}:${port}`);
+                            if (!vms.get(vmId).publicPorts) {
+                                vms.get(vmId).publicPorts = new Set();
+                            }
+                            vms.get(vmId).publicPorts.add(`${protocol}:${port}`);
+                        }
+                    }
+                }
+                
+                // Parse ACCEPT rules without specific port but with source
+                let acceptAllMatch = line.match(/-A tap(\d+)i0-IN\s+-s\s+(\d+\.\d+\.\d+\.\d+(?:\/\d+)?)\s+-d\s+(\d+\.\d+\.\d+\.\d+)\s+-j\s+ACCEPT/);
                 if (acceptAllMatch && !line.includes('--dport')) {
                     const vmId = acceptAllMatch[1];
                     const sourceIP = acceptAllMatch[2];
                     const destIP = acceptAllMatch[3];
                     
-                    if (!sourceIP.startsWith('192.168.2.') || sourceIP.includes('/')) {
-                        externalIPs.add(sourceIP);
+                    const isPublic = sourceIP === '0.0.0.0/0' || sourceIP === '0.0.0.0';
+                    
+                    if (isPublic || !sourceIP.startsWith('192.168.2.') || sourceIP.includes('/')) {
+                        if (isPublic) {
+                            externalIPs.add('0.0.0.0/0 (Everyone)');
+                        } else {
+                            externalIPs.add(sourceIP);
+                        }
                         connections.push({
-                            from: sourceIP,
+                            from: isPublic ? '0.0.0.0/0 (Everyone)' : sourceIP,
                             fromIP: sourceIP,
                             to: vmId,
                             toIP: destIP,
                             port: 'any',
                             protocol: 'any',
                             external: true,
-                            isHost: false
+                            isHost: false,
+                            isPublic: isPublic
                         });
+                        if (isPublic && vms.has(vmId)) {
+                            if (!vms.get(vmId).publicPorts) {
+                                vms.get(vmId).publicPorts = new Set();
+                            }
+                            vms.get(vmId).publicPorts.add('any:any');
+                        }
+                    }
+                }
+                
+                // Parse ACCEPT rules without source AND without specific port (accepts from anywhere)
+                // Only check if the previous pattern didn't match
+                else {
+                    acceptAllMatch = line.match(/-A tap(\d+)i0-IN\s+-d\s+(\d+\.\d+\.\d+\.\d+)\s+-j\s+ACCEPT/);
+                    if (acceptAllMatch && !line.includes('--dport') && !line.includes('-s ')) {
+                        const vmId = acceptAllMatch[1];
+                        const destIP = acceptAllMatch[2];
+                        const sourceIP = '0.0.0.0/0';
+                        const isPublic = true;
+                        
+                        externalIPs.add('0.0.0.0/0 (Everyone)');
+                        connections.push({
+                            from: '0.0.0.0/0 (Everyone)',
+                            fromIP: sourceIP,
+                            to: vmId,
+                            toIP: destIP,
+                            port: 'any',
+                            protocol: 'any',
+                            external: true,
+                            isHost: false,
+                            isPublic: isPublic
+                        });
+                        if (vms.has(vmId)) {
+                            if (!vms.get(vmId).publicPorts) {
+                                vms.get(vmId).publicPorts = new Set();
+                            }
+                            vms.get(vmId).publicPorts.add('any:any');
+                        }
                     }
                 }
             }
@@ -655,7 +763,7 @@ Then copy and paste the output here."></textarea>
             ctx.restore();
         }
 
-        function drawCurvedConnection(ctx, fromX, fromY, toX, toY, curve, color, label, labelKey) {
+        function drawCurvedConnection(ctx, fromX, fromY, toX, toY, curve, color, label, labelKey, lineWidth = 2) {
             const labelPos = labelPositions.get(labelKey);
             
             const control = calculateCurveControlPoint(fromX, fromY, toX, toY, curve, labelPos);
@@ -663,7 +771,7 @@ Then copy and paste the output here."></textarea>
             const controlY = control.y;
             
             ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
+            ctx.lineWidth = lineWidth;
             ctx.setLineDash([5, 3]);
             ctx.beginPath();
             ctx.moveTo(fromX, fromY);
@@ -817,11 +925,13 @@ Then copy and paste the output here."></textarea>
                     }
                     fromPos = externalPositions.get(conn.from);
                     toPos = proxmoxHostPos;
-                    color = '#00BCD4';
+                    // Use red for public host connections, cyan for restricted
+                    color = conn.isPublic ? '#F44336' : '#00BCD4';
                 } else if (conn.external) {
                     fromPos = externalPositions.get(conn.from);
                     toPos = vmPositions.get(conn.to);
-                    color = '#FF5722';
+                    // Use bright red/orange for public VM connections, orange for restricted external
+                    color = conn.isPublic ? '#FF1744' : '#FF5722';
                 } else {
                     fromPos = vmPositions.get(conn.from);
                     toPos = vmPositions.get(conn.to);
@@ -844,7 +954,9 @@ Then copy and paste the output here."></textarea>
                     
                     const label = `${conn.protocol}:${conn.port}`;
                     const labelKey = `conn-${connIndex}`;
-                    drawCurvedConnection(ctx, fromPos.x, fromPos.y, toPos.x, toPos.y, curveOffset, color, label, labelKey);
+                    // Make public connections thicker
+                    const lineWidth = conn.isPublic ? 3 : 2;
+                    drawCurvedConnection(ctx, fromPos.x, fromPos.y, toPos.x, toPos.y, curveOffset, color, label, labelKey, lineWidth);
                 }
             });
             
@@ -892,6 +1004,7 @@ Then copy and paste the output here."></textarea>
             vmPositions.forEach((pos, vmId) => {
                 const vm = pos.vm;
                 const isHovered = draggedItem && draggedItem.type === 'vm' && draggedItem.id === vmId;
+                const hasPublicPorts = vm.publicPorts && vm.publicPorts.size > 0;
                 
                 ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
                 ctx.shadowBlur = 15;
@@ -905,6 +1018,7 @@ Then copy and paste the output here."></textarea>
                 
                 ctx.shadowColor = 'transparent';
                 
+                // Same border style for all VMs
                 ctx.strokeStyle = isHovered ? '#1B5E20' : '#2E7D32';
                 ctx.lineWidth = isHovered ? 4 : 3;
                 ctx.stroke();
@@ -921,33 +1035,70 @@ Then copy and paste the output here."></textarea>
                     ctx.font = `${Math.floor(layoutParams.vmSize / 5.5)}px Arial`;
                     ctx.fillText(vm.inboundPorts.size + ' port(s)', pos.x, pos.y + layoutParams.vmSize/2.4);
                 }
+                
+                // Draw subtle exclamation mark badge for public ports
+                if (hasPublicPorts) {
+                    const badgeSize = 12;
+                    // Position badge to overlap the VM circle more
+                    const badgeX = pos.x + layoutParams.vmSize - badgeSize * 1.2;
+                    const badgeY = pos.y - layoutParams.vmSize + badgeSize * 1.2;
+                    
+                    ctx.fillStyle = '#F44336';
+                    ctx.beginPath();
+                    ctx.arc(badgeX, badgeY, badgeSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                    
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 11px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('!', badgeX, badgeY + 3);
+                }
             });
             
             externalPositions.forEach((pos, ip) => {
                 const isHovered = draggedItem && draggedItem.type === 'external' && draggedItem.id === ip;
+                const isPublic = ip.includes('0.0.0.0/0') || ip.includes('Everyone');
                 
-                ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
-                ctx.shadowBlur = 15;
-                ctx.shadowOffsetX = 4;
-                ctx.shadowOffsetY = 4;
+                // Add red glow for public IPs
+                if (isPublic) {
+                    ctx.shadowColor = 'rgba(255, 23, 68, 0.6)';
+                    ctx.shadowBlur = 20;
+                    ctx.shadowOffsetX = 0;
+                    ctx.shadowOffsetY = 0;
+                } else {
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+                    ctx.shadowBlur = 15;
+                    ctx.shadowOffsetX = 4;
+                    ctx.shadowOffsetY = 4;
+                }
                 
-                ctx.fillStyle = isHovered ? '#42A5F5' : '#2196F3';
+                ctx.fillStyle = isPublic ? (isHovered ? '#FF5252' : '#F44336') : (isHovered ? '#42A5F5' : '#2196F3');
                 ctx.beginPath();
                 ctx.arc(pos.x, pos.y, 45, 0, 2 * Math.PI);
                 ctx.fill();
                 
                 ctx.shadowColor = 'transparent';
                 
-                ctx.strokeStyle = isHovered ? '#0D47A1' : '#1565C0';
-                ctx.lineWidth = isHovered ? 4 : 3;
+                ctx.strokeStyle = isPublic ? '#C62828' : (isHovered ? '#0D47A1' : '#1565C0');
+                ctx.lineWidth = isPublic ? 4 : (isHovered ? 4 : 3);
                 ctx.stroke();
                 
                 ctx.fillStyle = '#fff';
                 ctx.font = 'bold 12px Arial';
                 ctx.textAlign = 'center';
                 
-                if (ip.length > 16) {
+                if (isPublic) {
+                    // Special handling for "Everyone" label
+                    ctx.fillText('Everyone', pos.x, pos.y - 5);
+                    ctx.font = '10px Arial';
+                    ctx.fillText('0.0.0.0/0', pos.x, pos.y + 10);
+                } else if (ip.length > 16) {
                     const parts = ip.split('/');
+                    ctx.font = 'bold 12px Arial';
                     ctx.fillText(parts[0].substring(0, 14) + '...', pos.x, pos.y - 5);
                     if (parts[1]) {
                         ctx.fillText('/' + parts[1], pos.x, pos.y + 10);
@@ -1232,11 +1383,13 @@ Then copy and paste the output here."></textarea>
             let vmDetailsHTML = '<div class="vm-details">';
             networkData.vms.forEach(vm => {
                 const incomingConns = networkData.connections.filter(c => c.to === vm.id);
+                const hasPublicPorts = vm.publicPorts && vm.publicPorts.size > 0;
+                const publicPortsText = hasPublicPorts ? `<br><span style="color: #C62828; font-weight: bold;">⚠️ Public ports: ${Array.from(vm.publicPorts).join(', ')}</span>` : '';
                 vmDetailsHTML += `
-                    <div class="vm-details-item">
+                    <div class="vm-details-item" style="${hasPublicPorts ? 'border-left: 4px solid #F44336;' : ''}">
                         <strong>VM ${vm.id} (${vm.ip})</strong><br>
                         Incoming connections: ${incomingConns.length}<br>
-                        Open ports: ${Array.from(vm.inboundPorts).join(', ')}
+                        Open ports: ${Array.from(vm.inboundPorts).join(', ')}${publicPortsText}
                     </div>
                 `;
             });
