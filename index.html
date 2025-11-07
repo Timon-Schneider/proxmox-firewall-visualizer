@@ -280,7 +280,8 @@ Then copy and paste the output here."></textarea>
                 <button onclick="toggleEditMode()" id="editModeBtn" style="display:none;" class="danger">🔒 Disable Drag Mode</button>
                 <button onclick="resetLayout()" id="resetBtn" style="display:none;">🔄 Reset Layout</button>
                 <button onclick="clearCanvas()">🗑️ Clear</button>
-                <button onclick="downloadImage()">💾 Download PNG</button>
+                <button onclick="downloadImage()" id="pngBtn" style="display:none;">💾 Download PNG</button>
+                <button onclick="downloadSVG()" id="svgBtn" style="display:none;">📄 Download SVG</button>
             </div>
         </div>
         
@@ -1376,6 +1377,8 @@ Then copy and paste the output here."></textarea>
             document.getElementById('controlsPanel').classList.add('show');
             document.getElementById('editModeBtn').style.display = 'inline-block';
             document.getElementById('resetBtn').style.display = 'inline-block';
+            document.getElementById('pngBtn').style.display = 'inline-block';
+            document.getElementById('svgBtn').style.display = 'inline-block';
             
             const infoPanel = document.getElementById('infoPanel');
             infoPanel.classList.add('show');
@@ -1418,6 +1421,8 @@ Then copy and paste the output here."></textarea>
             document.getElementById('controlsPanel').classList.remove('show');
             document.getElementById('editModeBtn').style.display = 'none';
             document.getElementById('resetBtn').style.display = 'none';
+            document.getElementById('pngBtn').style.display = 'none';
+            document.getElementById('svgBtn').style.display = 'none';
             
             vmPositions.clear();
             externalPositions.clear();
@@ -1436,6 +1441,279 @@ Then copy and paste the output here."></textarea>
             link.download = 'proxmox-network-diagram.png';
             link.href = canvas.toDataURL();
             link.click();
+        }
+
+        function escapeXML(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&apos;');
+        }
+
+        function generateSVG() {
+            const canvas = document.getElementById('networkCanvas');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <defs>
+        <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+            <feOffset dx="4" dy="4" result="offsetblur"/>
+            <feComponentTransfer>
+                <feFuncA type="linear" slope="0.3"/>
+            </feComponentTransfer>
+            <feMerge>
+                <feMergeNode/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <filter id="shadowStrong" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+            <feOffset dx="5" dy="5" result="offsetblur"/>
+            <feComponentTransfer>
+                <feFuncA type="linear" slope="0.3"/>
+            </feComponentTransfer>
+            <feMerge>
+                <feMergeNode/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <filter id="redGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+            <feOffset dx="0" dy="0" result="offsetblur"/>
+            <feFlood flood-color="#FF1744" flood-opacity="0.6"/>
+            <feComposite in2="offsetblur" operator="in"/>
+            <feMerge>
+                <feMergeNode/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+    <rect width="${width}" height="${height}" fill="#fafbfc"/>
+`;
+            
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            // Draw management network circle
+            if (networkData.managementNet && managementLabelPos) {
+                svg += `    <circle cx="${centerX}" cy="${centerY}" r="${layoutParams.managementCircleRadius}" 
+        fill="none" stroke="#FF9800" stroke-width="2" stroke-dasharray="10,5" opacity="0.8"/>\n`;
+                
+                const mgmtText = 'Management: ' + networkData.managementNet;
+                const mgmtTextWidth = mgmtText.length * 8; // Approximate width
+                svg += `    <rect x="${managementLabelPos.x - mgmtTextWidth/2 - 8}" y="${managementLabelPos.y - 12}" 
+        width="${mgmtTextWidth + 16}" height="24" rx="5" fill="rgba(255, 255, 255, 0.9)" stroke="#FF9800" stroke-width="1"/>\n`;
+                svg += `    <text x="${managementLabelPos.x}" y="${managementLabelPos.y + 4}" 
+        text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold" fill="#FF9800">${escapeXML(mgmtText)}</text>\n`;
+            }
+            
+            // Group connections by key to handle multiple connections between same nodes
+            const connectionGroups = new Map();
+            networkData.connections.forEach(conn => {
+                const key = [conn.from, conn.to].sort().join('-');
+                if (!connectionGroups.has(key)) {
+                    connectionGroups.set(key, []);
+                }
+                connectionGroups.get(key).push(conn);
+            });
+            
+            // Draw connections
+            networkData.connections.forEach((conn, connIndex) => {
+                let fromPos, toPos;
+                let color;
+                
+                if (conn.isHost) {
+                    if (conn.isManagement) {
+                        return;
+                    }
+                    fromPos = externalPositions.get(conn.from);
+                    toPos = proxmoxHostPos;
+                    color = conn.isPublic ? '#F44336' : '#00BCD4';
+                } else if (conn.external) {
+                    fromPos = externalPositions.get(conn.from);
+                    toPos = vmPositions.get(conn.to);
+                    color = conn.isPublic ? '#FF1744' : '#FF5722';
+                } else {
+                    fromPos = vmPositions.get(conn.from);
+                    toPos = vmPositions.get(conn.to);
+                    color = '#9C27B0';
+                }
+                
+                if (fromPos && toPos) {
+                    const key = [conn.from, conn.to].sort().join('-');
+                    const group = connectionGroups.get(key);
+                    const index = group.indexOf(conn);
+                    const totalInGroup = group.length;
+                    
+                    let curveOffset = 0;
+                    if (totalInGroup > 1) {
+                        const step = layoutParams.connectionCurve;
+                        curveOffset = (index - (totalInGroup - 1) / 2) * step;
+                    } else {
+                        curveOffset = layoutParams.connectionCurve / 2;
+                    }
+                    
+                    const labelPos = labelPositions.get(`conn-${connIndex}`);
+                    let controlX, controlY;
+                    
+                    if (labelPos && labelPos.customControl) {
+                        controlX = labelPos.controlX;
+                        controlY = labelPos.controlY;
+                    } else {
+                        const midX = (fromPos.x + toPos.x) / 2;
+                        const midY = (fromPos.y + toPos.y) / 2;
+                        const dx = toPos.x - fromPos.x;
+                        const dy = toPos.y - fromPos.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        const perpX = -dy / dist;
+                        const perpY = dx / dist;
+                        controlX = midX + perpX * curveOffset;
+                        controlY = midY + perpY * curveOffset;
+                    }
+                    
+                    const lineWidth = conn.isPublic ? 3 : 2;
+                    const label = `${conn.protocol}:${conn.port}`;
+                    
+                    // Draw curved line
+                    svg += `    <path d="M ${fromPos.x} ${fromPos.y} Q ${controlX} ${controlY} ${toPos.x} ${toPos.y}" 
+        fill="none" stroke="${color}" stroke-width="${lineWidth}" stroke-dasharray="5,3"/>\n`;
+                    
+                    // Draw arrowhead (at 80% along curve)
+                    const t = 0.8;
+                    const arrowX = (1-t)*(1-t)*fromPos.x + 2*(1-t)*t*controlX + t*t*toPos.x;
+                    const arrowY = (1-t)*(1-t)*fromPos.y + 2*(1-t)*t*controlY + t*t*toPos.y;
+                    const dx = 2*(1-t)*(controlX - fromPos.x) + 2*t*(toPos.x - controlX);
+                    const dy = 2*(1-t)*(controlY - fromPos.y) + 2*t*(toPos.y - controlY);
+                    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                    
+                    svg += `    <g transform="translate(${arrowX}, ${arrowY}) rotate(${angle})">
+        <path d="M 0 0 L -12 -6 L -12 6 Z" fill="${color}"/>
+    </g>\n`;
+                    
+                    // Draw label
+                    const labelT = 0.5;
+                    let labelX, labelY;
+                    if (labelPos) {
+                        labelX = labelPos.x;
+                        labelY = labelPos.y;
+                    } else {
+                        labelX = (1-labelT)*(1-labelT)*fromPos.x + 2*(1-labelT)*labelT*controlX + labelT*labelT*toPos.x;
+                        labelY = (1-labelT)*(1-labelT)*fromPos.y + 2*(1-labelT)*labelT*controlY + labelT*labelT*toPos.y;
+                    }
+                    
+                    const textWidth = label.length * 7; // Approximate width
+                    const padding = 4;
+                    svg += `    <rect x="${labelX - textWidth/2 - padding}" y="${labelY - 10}" 
+        width="${textWidth + padding * 2}" height="20" rx="4" fill="#fff" stroke="${color}" stroke-width="1.5"/>\n`;
+                    svg += `    <text x="${labelX}" y="${labelY + 4}" 
+        text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="${color}">${escapeXML(label)}</text>\n`;
+                }
+            });
+            
+            // Draw Proxmox host
+            if (networkData.proxmoxHost && proxmoxHostPos) {
+                const sides = 6;
+                const radius = 70;
+                let points = '';
+                for (let i = 0; i < sides; i++) {
+                    const angle = (i / sides) * 2 * Math.PI - Math.PI / 2;
+                    const x = proxmoxHostPos.x + Math.cos(angle) * radius;
+                    const y = proxmoxHostPos.y + Math.sin(angle) * radius;
+                    points += `${x},${y} `;
+                }
+                
+                svg += `    <polygon points="${points.trim()}" fill="#607D8B" stroke="#37474F" stroke-width="3" filter="url(#shadowStrong)"/>\n`;
+                svg += `    <text x="${proxmoxHostPos.x}" y="${proxmoxHostPos.y - 8}" 
+        text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold" fill="#fff">Proxmox</text>\n`;
+                svg += `    <text x="${proxmoxHostPos.x}" y="${proxmoxHostPos.y + 8}" 
+        text-anchor="middle" font-family="Arial" font-size="12" fill="#fff">Host</text>\n`;
+                svg += `    <text x="${proxmoxHostPos.x}" y="${proxmoxHostPos.y + 24}" 
+        text-anchor="middle" font-family="Arial" font-size="11" fill="#fff">${escapeXML(networkData.proxmoxHost)}</text>\n`;
+            }
+            
+            // Draw VMs
+            vmPositions.forEach((pos, vmId) => {
+                const vm = pos.vm;
+                const hasPublicPorts = vm.publicPorts && vm.publicPorts.size > 0;
+                
+                svg += `    <circle cx="${pos.x}" cy="${pos.y}" r="${layoutParams.vmSize}" 
+        fill="#4CAF50" stroke="#2E7D32" stroke-width="3" filter="url(#shadow)"/>\n`;
+                
+                svg += `    <text x="${pos.x}" y="${pos.y - layoutParams.vmSize/8}" 
+        text-anchor="middle" font-family="Arial" font-size="${Math.floor(layoutParams.vmSize / 3)}" font-weight="bold" fill="#fff">VM ${vm.id}</text>\n`;
+                svg += `    <text x="${pos.x}" y="${pos.y + layoutParams.vmSize/6}" 
+        text-anchor="middle" font-family="Arial" font-size="${Math.floor(layoutParams.vmSize / 4.6)}" fill="#fff">${escapeXML(vm.ip)}</text>\n`;
+                
+                if (vm.inboundPorts.size > 0) {
+                    svg += `    <text x="${pos.x}" y="${pos.y + layoutParams.vmSize/2.4}" 
+        text-anchor="middle" font-family="Arial" font-size="${Math.floor(layoutParams.vmSize / 5.5)}" fill="#fff">${vm.inboundPorts.size} port(s)</text>\n`;
+                }
+                
+                // Draw public ports badge
+                if (hasPublicPorts) {
+                    const badgeSize = 12;
+                    const badgeX = pos.x + layoutParams.vmSize - badgeSize * 1.2;
+                    const badgeY = pos.y - layoutParams.vmSize + badgeSize * 1.2;
+                    svg += `    <circle cx="${badgeX}" cy="${badgeY}" r="${badgeSize}" 
+        fill="#F44336" stroke="#fff" stroke-width="1.5"/>\n`;
+                    svg += `    <text x="${badgeX}" y="${badgeY + 3}" 
+        text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#fff">!</text>\n`;
+                }
+            });
+            
+            // Draw external IPs
+            externalPositions.forEach((pos, ip) => {
+                const isPublic = ip.includes('0.0.0.0/0') || ip.includes('Everyone');
+                const filter = isPublic ? 'url(#redGlow)' : 'url(#shadow)';
+                const fillColor = isPublic ? '#F44336' : '#2196F3';
+                const strokeColor = isPublic ? '#C62828' : '#1565C0';
+                const strokeWidth = isPublic ? 4 : 3;
+                
+                svg += `    <circle cx="${pos.x}" cy="${pos.y}" r="45" 
+        fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" filter="${filter}"/>\n`;
+                
+                if (isPublic) {
+                    svg += `    <text x="${pos.x}" y="${pos.y - 5}" 
+        text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="#fff">Everyone</text>\n`;
+                    svg += `    <text x="${pos.x}" y="${pos.y + 10}" 
+        text-anchor="middle" font-family="Arial" font-size="10" fill="#fff">0.0.0.0/0</text>\n`;
+                } else if (ip.length > 16) {
+                    const parts = ip.split('/');
+                    svg += `    <text x="${pos.x}" y="${pos.y - 5}" 
+        text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="#fff">${escapeXML(parts[0].substring(0, 14))}...</text>\n`;
+                    if (parts[1]) {
+                        svg += `    <text x="${pos.x}" y="${pos.y + 10}" 
+        text-anchor="middle" font-family="Arial" font-size="10" fill="#fff">/${escapeXML(parts[1])}</text>\n`;
+                    }
+                } else {
+                    svg += `    <text x="${pos.x}" y="${pos.y + 3}" 
+        text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="#fff">${escapeXML(ip)}</text>\n`;
+                }
+            });
+            
+            svg += '</svg>';
+            return svg;
+        }
+
+        function downloadSVG() {
+            if (networkData.vms.length === 0 && !networkData.proxmoxHost) {
+                alert('No data to export. Please generate a diagram first!');
+                return;
+            }
+            
+            const svg = generateSVG();
+            const blob = new Blob([svg], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.download = 'proxmox-network-diagram.svg';
+            link.href = url;
+            link.click();
+            URL.revokeObjectURL(url);
         }
 
         // Setup slider event listeners
