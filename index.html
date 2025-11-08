@@ -1500,7 +1500,10 @@ Then copy and paste the output here."></textarea>
             const centerY = height / 2;
             
             // Draw management network circle
-            if (networkData.managementNet && managementLabelPos) {
+            if (networkData.managementNet) {
+                if (!managementLabelPos) {
+                    managementLabelPos = { x: centerX, y: 80 };
+                }
                 svg += `    <circle cx="${centerX}" cy="${centerY}" r="${layoutParams.managementCircleRadius}" 
         fill="none" stroke="#FF9800" stroke-width="2" stroke-dasharray="10,5" opacity="0.8"/>\n`;
                 
