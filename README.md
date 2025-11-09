@@ -1,5 +1,7 @@
 # Proxmox Firewall Visualizer
 
+🌐: [Website](https://timon-schneider.github.io/proxmox-firewall-visualizer/)
+
 A single-file HTML tool that turns your Proxmox firewall configuration into an interactive network topology diagram.
 
 ## Features
